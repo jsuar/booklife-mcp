@@ -2,6 +2,8 @@
 booklife-mcp/booklife
 booklife-mcp/build/
 build/
+*.test
+booklife-mcp/test_version
 
 # Node.js
 node_modules/

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/sblinch/kdl-go"
+	"github.com/sblinch/kdl-go/document"
 )
 
 // Config represents the complete BookLife configuration
@@ -63,9 +64,9 @@ type ProvidersConfig struct {
 }
 
 type HardcoverConfig struct {
-	Enabled  bool   `kdl:"enabled"`
-	APIKey   string `kdl:"api-key"`
-	Endpoint string `kdl:"endpoint"`
+	Enabled  bool      `kdl:"enabled"`
+	APIKey   SecretRef `kdl:"api-key"`
+	Endpoint string    `kdl:"endpoint"`
 	Sync     struct {
 		AutoImportLibby bool   `kdl:"auto-import-libby"`
 		DefaultStatus   string `kdl:"default-status"`
@@ -98,15 +99,15 @@ type WikidataConfig struct {
 }
 
 type YouTubeConfig struct {
-	Enabled          bool     `kdl:"enabled"`
-	APIKey           string   `kdl:"api-key"`
-	BookTubeChannels []string `kdl:"booktube-channels"`
+	Enabled          bool      `kdl:"enabled"`
+	APIKey           SecretRef `kdl:"api-key"`
+	BookTubeChannels []string  `kdl:"booktube-channels"`
 }
 
 type TikTokConfig struct {
-	Enabled    bool     `kdl:"enabled"`
-	ScraperAPI string   `kdl:"scraper-api"`
-	Hashtags   []string `kdl:"hashtags"`
+	Enabled    bool      `kdl:"enabled"`
+	ScraperAPI SecretRef `kdl:"scraper-api"`
+	Hashtags   []string  `kdl:"hashtags"`
 }
 
 type LocalBookstoresConfig struct {
@@ -205,6 +206,30 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
+// SecretRef is a credential value from the config file. It accepts the
+// documented form `api-key env="VAR_NAME"` as well as a positional string.
+// Prefer the env form: config files are easy to commit by accident.
+type SecretRef string
+
+// UnmarshalKDL implements kdl.Unmarshaler.
+func (s *SecretRef) UnmarshalKDL(node *document.Node) error {
+	if value, ok := node.Properties["env"]; ok {
+		name, ok := value.Value.(string)
+		if !ok || name == "" {
+			return fmt.Errorf("env must be a non-empty environment variable name")
+		}
+		*s = SecretRef("env=" + name)
+		return nil
+	}
+	if len(node.Arguments) == 1 {
+		if value, ok := node.Arguments[0].Value.(string); ok {
+			*s = SecretRef(value)
+			return nil
+		}
+	}
+	return fmt.Errorf(`expected a string or env="VAR_NAME"`)
+}
+
 // resolveEnvVars replaces env="VAR_NAME" patterns with actual environment values
 // Returns error if required environment variables are not set
 func resolveEnvVars(cfg *Config) error {
@@ -233,9 +258,10 @@ func resolveEnvVars(cfg *Config) error {
 
 // resolveEnv resolves a single environment variable reference
 // If required=true and the env var is not set, returns an error
-func resolveEnv(value, varName string, required bool) (string, error) {
+func resolveEnv(ref SecretRef, varName string, required bool) (SecretRef, error) {
+	value := string(ref)
 	if !strings.HasPrefix(value, "env=") {
-		return value, nil
+		return ref, nil
 	}
 
 	envVar := strings.TrimPrefix(value, "env=")
@@ -252,7 +278,7 @@ func resolveEnv(value, varName string, required bool) (string, error) {
 			"   %s='your-value' booklife serve", envVar, envVar, envVar)
 	}
 
-	return envValue, nil
+	return SecretRef(envValue), nil
 }
 
 func validate(cfg *Config) error {

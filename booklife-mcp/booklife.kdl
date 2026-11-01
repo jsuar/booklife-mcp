@@ -22,7 +22,7 @@ user {
 providers {
     
     hardcover enabled=true {
-        api-key env="eyJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJIYXJkY292ZXIiLCJ2ZXJzaW9uIjoiOCIsImp0aSI6IjJkNjA1MGE3LTc4MTItNDI2Yy05ZjJkLWJkZWIxZWU3YWE0NSIsImFwcGxpY2F0aW9uSWQiOjIsInN1YiI6IjYxMTIyIiwiYXVkIjoiMSIsImlkIjoiNjExMjIiLCJsb2dnZWRJbiI6dHJ1ZSwiaWF0IjoxNzY2NzM1MjQ0LCJleHAiOjE3OTgyNzEyNDQsImh0dHBzOi8vaGFzdXJhLmlvL2p3dC9jbGFpbXMiOnsieC1oYXN1cmEtYWxsb3dlZC1yb2xlcyI6WyJ1c2VyIl0sIngtaGFzdXJhLWRlZmF1bHQtcm9sZSI6InVzZXIiLCJ4LWhhc3VyYS1yb2xlIjoidXNlciIsIlgtaGFzdXJhLXVzZXItaWQiOiI2MTEyMiJ9LCJ1c2VyIjp7ImlkIjo2MTEyMn19.6ukEn_JnNOJ0pxvNoK8DzRENeQStjxyR8T9BaQlWs1c"
+        api-key env="HARDCOVER_API_KEY"
         endpoint "https://api.hardcover.app/v1/graphql"
         
         sync {
@@ -32,16 +32,7 @@ providers {
     }
     
     libby enabled=false {
-        clone-code env="LIBBY_CLONE_CODE"
-        
-        libraries {
-            card "austin-public-library" {
-                id "apl"
-                website "https://austin.overdrive.com"
-                priority 1
-            }
-        }
-        
+        // Libraries are synced automatically via 'booklife libby-connect'
         notifications {
             hold-available true
             due-soon-days 3

@@ -97,7 +97,7 @@ func (s *Server) initProviders() error {
 	if s.cfg.Providers.Hardcover.Enabled {
 		client, err := hardcover.NewClient(
 			s.cfg.Providers.Hardcover.Endpoint,
-			s.cfg.Providers.Hardcover.APIKey,
+			string(s.cfg.Providers.Hardcover.APIKey),
 		)
 		if err != nil {
 			return fmt.Errorf("initializing Hardcover client: %w", err)
