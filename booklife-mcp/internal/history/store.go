@@ -81,16 +81,16 @@ func (s *Store) init() error {
 		title_id TEXT NOT NULL,
 		title TEXT NOT NULL,
 		author TEXT NOT NULL,
-		publisher TEXT,
-		isbn TEXT,
+		publisher TEXT DEFAULT '',
+		isbn TEXT DEFAULT '',
 		timestamp INTEGER NOT NULL,
 		activity TEXT NOT NULL,
-		details TEXT,
+		details TEXT DEFAULT '',
 		library TEXT NOT NULL,
 		library_key TEXT NOT NULL,
 		format TEXT NOT NULL,
-		cover_url TEXT,
-		color TEXT,
+		cover_url TEXT DEFAULT '',
+		color TEXT DEFAULT '',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		UNIQUE(title_id, timestamp, activity)
 	);
@@ -220,7 +220,22 @@ func (s *Store) init() error {
 	CREATE INDEX IF NOT EXISTS idx_profile_computed ON reading_profile(computed_at);
 	`
 
-	_, err := s.db.Exec(query)
+	if _, err := s.db.Exec(query); err != nil {
+		return err
+	}
+
+	// Backfill NULLs from before these columns had defaults. Rows are scanned
+	// into plain strings, so one NULL makes every history read fail.
+	_, err := s.db.Exec(`
+		UPDATE history SET
+			publisher = COALESCE(publisher, ''),
+			isbn      = COALESCE(isbn, ''),
+			details   = COALESCE(details, ''),
+			cover_url = COALESCE(cover_url, ''),
+			color     = COALESCE(color, '')
+		WHERE publisher IS NULL OR isbn IS NULL OR details IS NULL
+		   OR cover_url IS NULL OR color IS NULL
+	`)
 	return err
 }
 
@@ -290,14 +305,18 @@ func (s *Store) ImportCurrentLoan(loan models.LibbyLoan) error {
 
 	query := `
 		INSERT OR REPLACE INTO history
-		(title_id, title, author, timestamp, activity, details, library, library_key, format, cover_url)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		(title_id, title, author, publisher, isbn, timestamp, activity, details,
+		 library, library_key, format, cover_url, color)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
+	// Loans have no publisher, ISBN or color, so write empty strings explicitly.
 	_, err := s.db.Exec(query,
 		loan.ID,
 		loan.Title,
 		loan.Author,
+		"",
+		"",
 		timestamp,
 		"Borrowed",
 		fmt.Sprintf("%d days", int(time.Until(loan.DueDate).Hours()/24)),
@@ -305,6 +324,7 @@ func (s *Store) ImportCurrentLoan(loan models.LibbyLoan) error {
 		"",
 		loan.Format,
 		loan.CoverURL,
+		"",
 	)
 
 	return err
