@@ -10,7 +10,9 @@ import (
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
-)
+
+
+	"github.com/user/booklife-mcp/internal/dirs")
 
 // Source constants for tracking where TBR entries came from
 const (
