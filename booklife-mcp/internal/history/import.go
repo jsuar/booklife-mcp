@@ -1,8 +1,10 @@
 package history
 
 import (
+	"context"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -33,59 +35,79 @@ const timelineHost = "share.libbyapp.com"
 // maxTimelineBytes caps a timeline download. Real exports are far smaller.
 const maxTimelineBytes = 64 << 20
 
-// ValidateTimelineURL checks that rawURL is a Libby timeline share link.
-func ValidateTimelineURL(rawURL string) error {
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return fmt.Errorf("invalid URL")
-	}
-	if parsed.Scheme != "https" || parsed.Host != timelineHost || parsed.User != nil {
-		return fmt.Errorf("timeline URL must start with https://%s/", timelineHost)
+// validateTimelineURL checks that u is a Libby timeline share link.
+func validateTimelineURL(u *url.URL) error {
+	validHost := strings.EqualFold(u.Hostname(), timelineHost) && (u.Port() == "" || u.Port() == "443")
+	validPath := strings.HasPrefix(u.Path, "/data/") && strings.HasSuffix(u.Path, ".json")
+	if u.Scheme != "https" || !validHost || !validPath || u.User != nil {
+		return fmt.Errorf("timeline URL must look like https://%s/data/{id}/libbytimeline-all-loans.json", timelineHost)
 	}
 	return nil
 }
 
-// checkTimelineRedirect applies the same rule to every redirect target.
-func checkTimelineRedirect(req *http.Request, via []*http.Request) error {
-	if len(via) >= 5 {
-		return fmt.Errorf("too many redirects")
+// newTimelineClient returns a client that applies the URL rule to every redirect.
+func newTimelineClient() *http.Client {
+	return &http.Client{
+		Timeout: 60 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 5 {
+				return fmt.Errorf("too many redirects")
+			}
+			return validateTimelineURL(req.URL)
+		},
 	}
-	return ValidateTimelineURL(req.URL.String())
 }
 
 // FetchTimeline fetches timeline data from a Libby share URL
-func (im *Importer) FetchTimeline(rawURL string) (*models.TimelineResponse, error) {
-	if err := ValidateTimelineURL(rawURL); err != nil {
+func (im *Importer) FetchTimeline(ctx context.Context, rawURL string) (*models.TimelineResponse, error) {
+	return fetchTimeline(ctx, newTimelineClient(), rawURL)
+}
+
+func fetchTimeline(ctx context.Context, client *http.Client, rawURL string) (*models.TimelineResponse, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid timeline URL")
+	}
+	if err := validateTimelineURL(parsed); err != nil {
 		return nil, err
 	}
 
-	client := &http.Client{
-		Timeout:       60 * time.Second,
-		CheckRedirect: checkTimelineRedirect,
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
-	resp, err := client.Get(rawURL)
+	resp, err := client.Do(req)
 	if err != nil {
+		// url.Error carries the full URL, which is either a private share link
+		// or an untrusted redirect target, so keep only the cause.
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			err = urlErr.Err
+		}
 		return nil, fmt.Errorf("fetching timeline: %w", err)
 	}
 	defer resp.Body.Close()
 
-	return readTimeline(resp)
+	return readTimeline(resp, maxTimelineBytes)
 }
 
-// readTimeline parses a timeline response. The body is left out of errors so a
-// failed request can't return page contents to the caller.
-func readTimeline(resp *http.Response) (*models.TimelineResponse, error) {
+// readTimeline parses a timeline response of at most limit bytes. The body is
+// left out of errors so a failed request can't return page contents to the caller.
+func readTimeline(resp *http.Response, limit int64) (*models.TimelineResponse, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
+	if resp.ContentLength > limit {
+		return nil, fmt.Errorf("timeline is larger than %d bytes", limit)
+	}
 
-	data, err := io.ReadAll(io.LimitReader(resp.Body, maxTimelineBytes+1))
+	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil {
 		return nil, fmt.Errorf("reading response: %w", err)
 	}
-	if len(data) > maxTimelineBytes {
-		return nil, fmt.Errorf("timeline is larger than %d bytes", maxTimelineBytes)
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("timeline is larger than %d bytes", limit)
 	}
 
 	// Use ParseTimeline which handles nested objects correctly
@@ -93,9 +115,9 @@ func readTimeline(resp *http.Response) (*models.TimelineResponse, error) {
 }
 
 // ImportTimeline fetches and imports timeline data from a URL
-func (im *Importer) ImportTimeline(rawURL string) (int, error) {
+func (im *Importer) ImportTimeline(ctx context.Context, rawURL string) (int, error) {
 	// Fetch timeline
-	timeline, err := im.FetchTimeline(rawURL)
+	timeline, err := im.FetchTimeline(ctx, rawURL)
 	if err != nil {
 		return 0, err
 	}

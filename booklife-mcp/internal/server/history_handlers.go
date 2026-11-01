@@ -62,12 +62,8 @@ func (s *Server) handleImportTimeline(ctx context.Context, req *mcp.CallToolRequ
 		return nil, nil, fmt.Errorf("URL too long (max 2048 characters)")
 	}
 
-	if err := history.ValidateTimelineURL(input.URL); err != nil {
-		return nil, nil, err
-	}
-
 	importer := history.NewImporter(s.historyStore)
-	count, err := importer.ImportTimeline(input.URL)
+	count, err := importer.ImportTimeline(ctx, input.URL)
 	if err != nil {
 		return nil, nil, fmt.Errorf("importing timeline: %w", err)
 	}
