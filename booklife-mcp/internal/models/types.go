@@ -114,6 +114,11 @@ type LibraryAvailability struct {
 	EbookID     string `json:"ebook_id,omitempty"`     // Overdrive format ID for ebook
 	AudiobookID string `json:"audiobook_id,omitempty"` // Overdrive format ID for audiobook
 
+	// Per-format media IDs, because each edition has its own. MediaID names the
+	// recommended edition; use these to act on a specific format.
+	EbookMediaID     string `json:"ebook_media_id,omitempty"`
+	AudiobookMediaID string `json:"audiobook_media_id,omitempty"`
+
 	EstimatedWaitDays int `json:"estimated_wait_days,omitempty"`
 }
 
