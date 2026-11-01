@@ -468,6 +468,7 @@ Example: {"isbn": "9780756404741"}`,
 		Name: "history_import_timeline",
 		Description: `Import Libby reading history from a timeline export URL.
 This imports your complete Libby reading history into the local store.
+Only https://share.libbyapp.com/data/... links are accepted.
 Example: {"url": "https://share.libbyapp.com/data/{uuid}/libbytimeline-all-loans.json"}`,
 	}, s.handleImportTimeline)
 

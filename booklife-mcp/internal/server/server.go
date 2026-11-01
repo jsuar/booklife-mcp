@@ -140,11 +140,11 @@ func (s *Server) initProviders() error {
 				// Auto-import timeline if URL is configured
 				if s.cfg.Providers.Libby.TimelineURL != "" {
 					importer := history.NewImporter(store)
-					count, err := importer.ImportTimeline(s.cfg.Providers.Libby.TimelineURL)
+					count, err := importer.ImportTimeline(context.Background(), s.cfg.Providers.Libby.TimelineURL)
 					if err != nil {
-						fmt.Printf("Warning: Failed to import timeline: %v\n", err)
+						fmt.Fprintf(os.Stderr, "Warning: Failed to import timeline: %v\n", err)
 					} else {
-						fmt.Printf("Imported %d timeline entries\n", count)
+						fmt.Fprintf(os.Stderr, "Imported %d timeline entries\n", count)
 					}
 				}
 			}

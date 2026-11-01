@@ -86,6 +86,7 @@ type LibbyConfig struct {
 	} `kdl:"notifications"`
 	// TimelineURL is the optional Libby timeline export URL for importing reading history
 	// Format: https://share.libbyapp.com/data/{uuid}/libbytimeline-all-loans.json
+	// Other hosts are rejected; use 'booklife import-timeline <file>' for a local copy.
 	TimelineURL string `kdl:"timeline-url"`
 }
 

@@ -6,7 +6,7 @@ sidebar_position: 2
 
 ## Prerequisites
 
-- **Go 1.21+** — For building the server
+- **Go 1.26+** — For building the server
 - **Hardcover account** — [Sign up](https://hardcover.app) and get an API key from [Settings > API](https://hardcover.app/settings/api)
 - **Libby account** — Library card connected to the [Libby app](https://libbyapp.com)
 
