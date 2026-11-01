@@ -75,7 +75,9 @@ type HardcoverConfig struct {
 }
 
 type LibbyConfig struct {
-	Enabled       bool `kdl:"enabled"`
+	Enabled bool `kdl:"enabled"`
+	// SkipTLSVerify is deprecated and ignored. It is still parsed so existing
+	// configs load; certificates are always verified.
 	SkipTLSVerify bool `kdl:"skip-tls-verify"`
 	// Libraries are synced from Libby automatically via 'booklife libby-connect'
 	Notifications struct {

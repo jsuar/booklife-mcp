@@ -107,6 +107,9 @@ func (s *Server) initProviders() error {
 
 	// Libby - uses saved identity from 'booklife libby-connect'
 	if s.cfg.Providers.Libby.Enabled {
+		if s.cfg.Providers.Libby.SkipTLSVerify {
+			fmt.Fprintln(os.Stderr, "Warning: skip-tls-verify is no longer supported and is ignored; certificates are always verified")
+		}
 		if !libby.HasSavedIdentity() {
 			identityPath, _ := libby.IdentityPath()
 			fmt.Fprintf(os.Stderr, "Warning: Libby enabled but no saved identity found\n\n"+
@@ -119,7 +122,7 @@ func (s *Server) initProviders() error {
 				"Identity will be saved to: %s\n\n", identityPath)
 			// Continue without Libby - don't fail server initialization
 		} else {
-			client, err := libby.NewClientFromSavedIdentityWithOptions(s.cfg.Providers.Libby.SkipTLSVerify)
+			client, err := libby.NewClientFromSavedIdentity()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: Failed to initialize Libby client: %v\n\n"+
 					"Libby tools will not be available.\n\n"+
@@ -129,8 +132,7 @@ func (s *Server) initProviders() error {
 					"3. OverDrive API changes\n\n"+
 					"To fix:\n"+
 					"1. Reconnect: booklife libby-connect <code>\n"+
-					"2. Check network connection\n"+
-					"3. If TLS errors, enable skip-tls-verify in config\n\n", err)
+					"2. Check network connection\n\n", err)
 				// Continue without Libby - don't fail server initialization
 			} else {
 				s.libby = client
