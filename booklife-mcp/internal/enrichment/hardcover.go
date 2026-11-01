@@ -168,7 +168,7 @@ func (h *HardcoverEnricher) GetByTitleAuthor(ctx context.Context, title, author 
 	var searchResult struct {
 		Data struct {
 			Search struct {
-				IDs []string `json:"ids"`
+				IDs []json.Number `json:"ids"` // accepts numbers and numeric strings
 			} `json:"search"`
 		} `json:"data"`
 		Errors []struct {
@@ -190,7 +190,7 @@ func (h *HardcoverEnricher) GetByTitleAuthor(ctx context.Context, title, author 
 
 	// Use the first result's ID to fetch full enrichment data
 	// This second query gets genres, moods, themes, series that search doesn't provide
-	bookID := searchResult.Data.Search.IDs[0]
+	bookID := searchResult.Data.Search.IDs[0].String()
 	return h.GetByID(ctx, bookID)
 }
 
