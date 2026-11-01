@@ -25,7 +25,7 @@ go build -o booklife ./cmd/booklife
 
 ### 3. Configure
 
-Create `booklife.kdl`:
+Create `booklife.kdl` (copy `booklife.kdl.example`; the real file is gitignored, so keep keys in environment variables):
 
 ```kdl
 server {

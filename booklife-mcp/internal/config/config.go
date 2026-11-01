@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/sblinch/kdl-go"
@@ -179,7 +180,7 @@ func Load(path string) (*Config, error) {
 				"Fix:\n"+
 				"1. Create a config file at: %s\n"+
 				"2. Or use --config to specify a different location\n"+
-				"3. See example: https://github.com/user/booklife-mcp/blob/main/booklife.kdl.example", path, path)
+				"3. Start from booklife.kdl.example in the repository", path, path)
 		}
 		return nil, fmt.Errorf("reading config file %s: %w", path, err)
 	}
@@ -207,28 +208,30 @@ func Load(path string) (*Config, error) {
 }
 
 // SecretRef is a credential value from the config file. It accepts the
-// documented form `api-key env="VAR_NAME"` as well as a positional string.
+// documented form `api-key env="VAR_NAME"` or a single positional value.
 // Prefer the env form: config files are easy to commit by accident.
 type SecretRef string
 
 // UnmarshalKDL implements kdl.Unmarshaler.
 func (s *SecretRef) UnmarshalKDL(node *document.Node) error {
-	if value, ok := node.Properties["env"]; ok {
+	value, hasEnv := node.Properties["env"]
+	switch {
+	case hasEnv && len(node.Arguments) == 0 && len(node.Properties) == 1:
 		name, ok := value.Value.(string)
-		if !ok || name == "" {
-			return fmt.Errorf("env must be a non-empty environment variable name")
+		if !ok {
+			return fmt.Errorf("env must be a string")
 		}
 		*s = SecretRef("env=" + name)
 		return nil
+	case !hasEnv && len(node.Arguments) == 1 && len(node.Properties) == 0:
+		*s = SecretRef(fmt.Sprint(node.Arguments[0].Value))
+		return nil
 	}
-	if len(node.Arguments) == 1 {
-		if value, ok := node.Arguments[0].Value.(string); ok {
-			*s = SecretRef(value)
-			return nil
-		}
-	}
-	return fmt.Errorf(`expected a string or env="VAR_NAME"`)
+	return fmt.Errorf(`expected either a single value or env="VAR_NAME", not both`)
 }
+
+// envVarName matches a valid environment variable name.
+var envVarName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // resolveEnvVars replaces env="VAR_NAME" patterns with actual environment values
 // Returns error if required environment variables are not set
@@ -236,19 +239,19 @@ func resolveEnvVars(cfg *Config) error {
 	var err error
 
 	// Hardcover API key (required if enabled)
-	cfg.Providers.Hardcover.APIKey, err = resolveEnv(cfg.Providers.Hardcover.APIKey, "HARDCOVER_API_KEY", cfg.Providers.Hardcover.Enabled)
+	cfg.Providers.Hardcover.APIKey, err = resolveEnv(cfg.Providers.Hardcover.APIKey, cfg.Providers.Hardcover.Enabled)
 	if err != nil {
 		return err
 	}
 
 	// YouTube API key (optional)
-	cfg.Providers.YouTube.APIKey, err = resolveEnv(cfg.Providers.YouTube.APIKey, "YOUTUBE_API_KEY", false)
+	cfg.Providers.YouTube.APIKey, err = resolveEnv(cfg.Providers.YouTube.APIKey, false)
 	if err != nil {
 		return err
 	}
 
 	// TikTok scraper API (optional)
-	cfg.Providers.TikTok.ScraperAPI, err = resolveEnv(cfg.Providers.TikTok.ScraperAPI, "TIKTOK_SCRAPER_API", false)
+	cfg.Providers.TikTok.ScraperAPI, err = resolveEnv(cfg.Providers.TikTok.ScraperAPI, false)
 	if err != nil {
 		return err
 	}
@@ -258,7 +261,7 @@ func resolveEnvVars(cfg *Config) error {
 
 // resolveEnv resolves a single environment variable reference
 // If required=true and the env var is not set, returns an error
-func resolveEnv(ref SecretRef, varName string, required bool) (SecretRef, error) {
+func resolveEnv(ref SecretRef, required bool) (SecretRef, error) {
 	value := string(ref)
 	if !strings.HasPrefix(value, "env=") {
 		return ref, nil
@@ -266,6 +269,12 @@ func resolveEnv(ref SecretRef, varName string, required bool) (SecretRef, error)
 
 	envVar := strings.TrimPrefix(value, "env=")
 	envVar = strings.Trim(envVar, "\"")
+
+	// Never echo an invalid name: a secret pasted here would reach the logs.
+	if !envVarName.MatchString(envVar) {
+		return "", fmt.Errorf("env must name an environment variable, not hold its value\n\n" +
+			"Fix: Use a variable name such as env=\"HARDCOVER_API_KEY\"")
+	}
 
 	envValue := os.Getenv(envVar)
 	if envValue == "" && required {

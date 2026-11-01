@@ -38,7 +38,7 @@ booklife-mcp/
 │   ├── enrichment/              # Metadata enrichment service
 │   ├── graph/                   # Book relationship graph
 │   └── analytics/               # Reading profile computation
-└── booklife.kdl                 # Example configuration
+└── booklife.kdl.example         # Example configuration
 ```
 
 ## Design Patterns

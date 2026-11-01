@@ -12,8 +12,8 @@ BookLife is an MCP (Model Context Protocol) server for managing a personal readi
 # Build the server
 cd booklife-mcp && go build -o booklife ./cmd/booklife
 
-# Run the server (requires booklife.kdl config)
-./booklife --config booklife.kdl
+# Run the server (copy booklife.kdl.example to booklife.kdl first; never commit it)
+./booklife serve --config booklife.kdl
 
 # Run tests
 go test ./...
@@ -26,7 +26,8 @@ go test -run TestName ./internal/...
 
 Required:
 - `HARDCOVER_API_KEY` - Hardcover GraphQL API token
-- `LIBBY_CLONE_CODE` - 8-digit clone code from Libby app (Settings > Copy To Another Device)
+
+Libby does not use an environment variable: run `booklife libby-connect <8-digit-code>` once to save an identity.
 
 Optional:
 - `YOUTUBE_API_KEY` - For BookTube integration
@@ -259,8 +260,7 @@ See SPEC.md for full implementation phases. Current state:
       "command": "/path/to/booklife",
       "args": ["--config", "/path/to/booklife.kdl"],
       "env": {
-        "HARDCOVER_API_KEY": "...",
-        "LIBBY_CLONE_CODE": "..."
+        "HARDCOVER_API_KEY": "..."
       }
     }
   }

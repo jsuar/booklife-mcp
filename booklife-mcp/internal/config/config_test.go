@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -27,10 +28,11 @@ func TestSecretRefForms(t *testing.T) {
 		{"env property", `api-key env="BOOKLIFE_TEST_KEY"`, "from-env"},
 		{"positional env reference", `api-key "env=BOOKLIFE_TEST_KEY"`, "from-env"},
 		{"literal value", `api-key "literal-key"`, "literal-key"},
+		{"unquoted number", `api-key 12345`, "12345"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg, err := Load(writeConfig(t, "server {\n name \"booklife\"\n}\nproviders {\n hardcover enabled=true {\n  "+tt.line+"\n }\n}\n"))
+			cfg, err := Load(writeConfig(t, hardcoverConfig(tt.line)))
 			if err != nil {
 				t.Fatalf("Load: %v", err)
 			}
@@ -41,10 +43,40 @@ func TestSecretRefForms(t *testing.T) {
 	}
 }
 
+func hardcoverConfig(line string) string {
+	return "server {\n name \"booklife\"\n}\nproviders {\n hardcover enabled=true {\n  " + line + "\n }\n}\n"
+}
+
 func TestMissingRequiredEnvVarFails(t *testing.T) {
-	_, err := Load(writeConfig(t, "server {\n name \"booklife\"\n}\nproviders {\n hardcover enabled=true {\n  api-key env=\"BOOKLIFE_TEST_UNSET\"\n }\n}\n"))
-	if err == nil {
-		t.Fatal("expected an error when the required variable is unset")
+	t.Setenv("BOOKLIFE_TEST_UNSET", "")
+	_, err := Load(writeConfig(t, hardcoverConfig(`api-key env="BOOKLIFE_TEST_UNSET"`)))
+	if err == nil || !strings.Contains(err.Error(), `required environment variable "BOOKLIFE_TEST_UNSET"`) {
+		t.Fatalf("expected a missing variable error, got: %v", err)
+	}
+}
+
+func TestSecretInEnvNameIsNotEchoed(t *testing.T) {
+	const secret = "eyJhbGciOiJIUzI1NiJ9.c2VjcmV0.c2lnbmF0dXJl"
+	for _, line := range []string{`api-key env="` + secret + `"`, `api-key "env=` + secret + `"`} {
+		_, err := Load(writeConfig(t, hardcoverConfig(line)))
+		if err == nil {
+			t.Fatalf("%s: expected an error", line)
+		}
+		if strings.Contains(err.Error(), "eyJ") {
+			t.Fatalf("error leaked the value: %v", err)
+		}
+	}
+}
+
+func TestSecretRefRejectsAmbiguousForms(t *testing.T) {
+	for _, line := range []string{
+		`api-key "literal" env="BOOKLIFE_TEST_KEY"`,
+		`api-key "one" "two"`,
+		`api-key`,
+	} {
+		if _, err := Load(writeConfig(t, hardcoverConfig(line))); err == nil {
+			t.Errorf("%s: expected an error", line)
+		}
 	}
 }
 
@@ -54,7 +86,7 @@ func TestSampleConfigs(t *testing.T) {
 	t.Setenv("HARDCOVER_API_KEY", "test-key")
 	jwt := regexp.MustCompile(`eyJ[A-Za-z0-9_-]{10,}`)
 
-	for _, path := range []string{"../../booklife.kdl", "../../../booklife.kdl"} {
+	for _, path := range []string{"../../booklife.kdl.example", "../../../booklife.kdl.example"} {
 		t.Run(path, func(t *testing.T) {
 			data, err := os.ReadFile(path)
 			if err != nil {
