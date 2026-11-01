@@ -229,7 +229,7 @@ Two OverDrive endpoints serve a certificate that does not cover their public hos
 Certificates are always verified. **Never disable verification**: these connections carry the clone code and the Libby session token. If a certificate name changes, update the map. To check the live hosts:
 
 ```bash
-BOOKLIFE_LIVE_TESTS=1 go test -run TestLiveTLS ./internal/providers/libby/
+BOOKLIFE_LIVE_TESTS=1 go test -count=1 -run TestLiveTLS ./internal/providers/libby/
 ```
 
 ## Implementation Status

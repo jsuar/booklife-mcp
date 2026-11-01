@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/user/booklife-mcp/internal/config"
@@ -161,11 +162,14 @@ func cmdLibbyConnect() {
 		os.Exit(1)
 	}
 
-	code := os.Args[2]
-	for _, arg := range os.Args[3:] {
-		if arg == "--skip-tls-verify" {
+	// The old flag may appear on either side of the code.
+	var code string
+	for _, arg := range os.Args[2:] {
+		if arg == "--skip-tls-verify" || strings.HasPrefix(arg, "--skip-tls-verify=") {
 			fmt.Fprintln(os.Stderr, "Warning: --skip-tls-verify is no longer supported and is ignored; certificates are always verified")
+			continue
 		}
+		code = arg
 	}
 
 	// Validate code format

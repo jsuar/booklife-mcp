@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/user/booklife-mcp/internal/debug"
@@ -81,16 +82,54 @@ func tlsServerName(endpoint string) string {
 	return ""
 }
 
+// tlsConfig returns the certificate verification settings for an endpoint.
+func tlsConfig(endpoint string) *tls.Config {
+	return &tls.Config{ServerName: tlsServerName(endpoint)}
+}
+
+// requestTimeout limits a whole Libby request, including reading the body.
+const requestTimeout = 30 * time.Second
+
+// transports holds one shared transport per certificate name, so connections
+// are reused rather than leaked. Each keeps the default proxy and dial settings.
+var (
+	transportsMu sync.Mutex
+	transports   = map[string]*http.Transport{}
+)
+
+func transportFor(endpoint string) *http.Transport {
+	transportsMu.Lock()
+	defer transportsMu.Unlock()
+
+	name := tlsServerName(endpoint)
+	transport, ok := transports[name]
+	if !ok {
+		transport = http.DefaultTransport.(*http.Transport).Clone()
+		transport.TLSClientConfig = tlsConfig(endpoint)
+		transports[name] = transport
+	}
+	return transport
+}
+
+// sameHostRedirect stops redirects from leaving the original host: the pinned
+// certificate name only applies to that host.
+func sameHostRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return fmt.Errorf("too many redirects")
+	}
+	if req.URL.Host != via[0].URL.Host {
+		return fmt.Errorf("refusing redirect to another host: %s", req.URL.Hostname())
+	}
+	return nil
+}
+
 // newHTTPClient returns a client that verifies certificates for endpoint.
 func newHTTPClient(endpoint string, jar http.CookieJar) *http.Client {
 	return &http.Client{
-		Jar: jar,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				ServerName: tlsServerName(endpoint),
-				MinVersion: tls.VersionTLS12,
-			},
-		},
+		Jar:           jar,
+		Timeout:       requestTimeout,
+		Transport:     transportFor(endpoint),
+		CheckRedirect: sameHostRedirect,
 	}
 }
 
@@ -199,7 +238,8 @@ func enhanceNetworkError(err error, endpoint string) error {
 			"the connection.\n\n"+
 			"Fix:\n"+
 			"1. Try a different network\n"+
-			"2. If it persists, check whether tlsServerNames needs updating", endpoint, err)
+			"2. If it persists, update BookLife or report the issue. Do not\n"+
+			"   work around it by disabling certificate verification", endpoint, err)
 	}
 
 	// Connection refused
@@ -881,7 +921,7 @@ func Connect(code string) (*Identity, []Library, error) {
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, nil, fmt.Errorf("getting chip: %w", err)
+		return nil, nil, fmt.Errorf("getting chip: %w", enhanceNetworkError(err, chipEndpoint))
 	}
 	defer resp.Body.Close()
 
@@ -914,7 +954,7 @@ func Connect(code string) (*Identity, []Library, error) {
 
 	resp, err = httpClient.Do(req)
 	if err != nil {
-		return nil, nil, fmt.Errorf("connecting to Libby: %w", err)
+		return nil, nil, fmt.Errorf("connecting to Libby: %w", enhanceNetworkError(err, cloneEndpoint))
 	}
 	defer resp.Body.Close()
 
@@ -955,7 +995,7 @@ func Connect(code string) (*Identity, []Library, error) {
 
 	resp, err = httpClient.Do(req)
 	if err != nil {
-		return nil, nil, fmt.Errorf("syncing libraries: %w", err)
+		return nil, nil, fmt.Errorf("syncing libraries: %w", enhanceNetworkError(err, syncEndpoint))
 	}
 	defer resp.Body.Close()
 
