@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/user/booklife-mcp/internal/debug"
 	"github.com/user/booklife-mcp/internal/dirs"
@@ -494,16 +495,146 @@ func (c *Client) CheckAvailability(ctx context.Context, isbn, title, author stri
 		}
 	}
 
-	books, _, err := c.Search(ctx, query, nil, false, 0, 1)
+	// Fetch several results: the top hit is often the audiobook, so a single
+	// result would misreport a title that is also available as an ebook.
+	books, _, err := c.Search(ctx, query, nil, false, 0, availabilitySearchSize)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(books) == 0 {
-		return nil, nil
+	// An ISBN identifies one edition, so look for the others by title.
+	if query == isbn && len(books) > 0 {
+		related := books[0].Title
+		if name := firstAuthor(books[0]); name != "" {
+			related += " " + name
+		}
+		// This lookup is optional: the ISBN result is still a valid answer.
+		if more, _, err := c.Search(ctx, related, nil, false, 0, availabilitySearchSize); err == nil {
+			books = append(books, more...)
+		}
 	}
 
-	return books[0].LibraryAvailability, nil
+	return mergeEditions(books, title), nil
+}
+
+// availabilitySearchSize is how many search results are checked for editions.
+const availabilitySearchSize = 10
+
+// editionSuffix matches markers that distinguish editions of one book.
+var editionSuffix = regexp.MustCompile(`(?i)\s*(\(unabridged\)|\[unabridged\]|-\s*unabridged|\(abridged\)|\[abridged\])\s*$`)
+
+// matchKey reduces text to lowercase letters and digits.
+func matchKey(text string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return unicode.ToLower(r)
+		}
+		return -1
+	}, text)
+}
+
+func titleKey(title string) string {
+	return matchKey(editionSuffix.ReplaceAllString(title, ""))
+}
+
+func firstAuthor(book models.Book) string {
+	if len(book.Authors) == 0 {
+		return ""
+	}
+	return book.Authors[0].Name
+}
+
+// sameWork reports whether two search results are editions of one book. Matching
+// is strict on purpose: a false match could put a hold on the wrong book, while a
+// missed match only leaves the other edition out.
+func sameWork(a, b models.Book) bool {
+	title, author := titleKey(a.Title), matchKey(firstAuthor(a))
+	return title != "" && author != "" && title == titleKey(b.Title) && author == matchKey(firstAuthor(b))
+}
+
+// anchorEdition picks the result the merge is built around: the first with
+// availability whose title matches the request, otherwise the first with
+// availability. Search can rank a sequel above the book that was asked for.
+func anchorEdition(books []models.Book, title string) *models.Book {
+	var first *models.Book
+	for i := range books {
+		if books[i].LibraryAvailability == nil {
+			continue
+		}
+		if first == nil {
+			first = &books[i]
+		}
+		if title != "" && titleKey(books[i].Title) == titleKey(title) {
+			return &books[i]
+		}
+	}
+	return first
+}
+
+// mergeEditions combines the ebook and audiobook editions of the requested book,
+// preferring an available edition of each format. MediaID names the edition to
+// borrow or hold: an available ebook, then an available audiobook, then the anchor.
+func mergeEditions(books []models.Book, title string) *models.LibraryAvailability {
+	anchor := anchorEdition(books, title)
+	if anchor == nil {
+		return nil
+	}
+
+	merged := &models.LibraryAvailability{
+		LibraryName:       anchor.LibraryAvailability.LibraryName,
+		MediaID:           anchor.LibraryAvailability.MediaID,
+		EstimatedWaitDays: anchor.LibraryAvailability.EstimatedWaitDays,
+	}
+
+	editions := []*models.Book{anchor}
+	for i := range books {
+		if &books[i] != anchor && books[i].LibraryAvailability != nil && sameWork(*anchor, books[i]) {
+			editions = append(editions, &books[i])
+		}
+	}
+
+	var sawEbook, sawAudiobook bool
+	for _, edition := range editions {
+		avail := edition.LibraryAvailability
+		for _, format := range avail.Formats {
+			switch format {
+			case "ebook":
+				if !sawEbook || (avail.EbookAvailable && !merged.EbookAvailable) {
+					merged.EbookAvailable = avail.EbookAvailable
+					merged.EbookCopies = avail.EbookCopies
+					merged.EbookWaitlistSize = avail.EbookWaitlistSize
+					merged.EbookID = avail.EbookID
+					merged.EbookMediaID = avail.MediaID
+				}
+				sawEbook = true
+			case "audiobook":
+				if !sawAudiobook || (avail.AudiobookAvailable && !merged.AudiobookAvailable) {
+					merged.AudiobookAvailable = avail.AudiobookAvailable
+					merged.AudiobookCopies = avail.AudiobookCopies
+					merged.AudiobookWaitlistSize = avail.AudiobookWaitlistSize
+					merged.AudiobookID = avail.AudiobookID
+					merged.AudiobookMediaID = avail.MediaID
+				}
+				sawAudiobook = true
+			}
+		}
+	}
+
+	if sawEbook {
+		merged.Formats = append(merged.Formats, "ebook")
+	}
+	if sawAudiobook {
+		merged.Formats = append(merged.Formats, "audiobook")
+	}
+	if merged.EbookAvailable {
+		merged.MediaID = merged.EbookMediaID
+		merged.EstimatedWaitDays = 0
+	} else if merged.AudiobookAvailable {
+		merged.MediaID = merged.AudiobookMediaID
+		merged.EstimatedWaitDays = 0
+	}
+
+	return merged
 }
 
 // GetLoans returns current loans
