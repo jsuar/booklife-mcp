@@ -159,3 +159,12 @@ func TestMergeEditionsCountsAnEditionOnce(t *testing.T) {
 		t.Fatalf("Formats = %v", got.Formats)
 	}
 }
+
+func TestMergeEditionsClearsWaitWhenAvailable(t *testing.T) {
+	waitlisted := audiobook("audio-1", "Dune", "Frank Herbert", false)
+	waitlisted.LibraryAvailability.EstimatedWaitDays = 30
+	got := mergeEditions([]models.Book{waitlisted, ebook("ebook-1", "Dune", "Frank Herbert", true)}, "")
+	if got.EstimatedWaitDays != 0 {
+		t.Fatalf("EstimatedWaitDays = %d, want 0", got.EstimatedWaitDays)
+	}
+}

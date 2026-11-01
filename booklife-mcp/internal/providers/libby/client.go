@@ -508,11 +508,10 @@ func (c *Client) CheckAvailability(ctx context.Context, isbn, title, author stri
 		if name := firstAuthor(books[0]); name != "" {
 			related += " " + name
 		}
-		more, _, err := c.Search(ctx, related, nil, false, 0, availabilitySearchSize)
-		if err != nil {
-			return nil, err
+		// This lookup is optional: the ISBN result is still a valid answer.
+		if more, _, err := c.Search(ctx, related, nil, false, 0, availabilitySearchSize); err == nil {
+			books = append(books, more...)
 		}
-		books = append(books, more...)
 	}
 
 	return mergeEditions(books, title), nil
@@ -629,8 +628,10 @@ func mergeEditions(books []models.Book, title string) *models.LibraryAvailabilit
 	}
 	if merged.EbookAvailable {
 		merged.MediaID = merged.EbookMediaID
+		merged.EstimatedWaitDays = 0
 	} else if merged.AudiobookAvailable {
 		merged.MediaID = merged.AudiobookMediaID
+		merged.EstimatedWaitDays = 0
 	}
 
 	return merged
