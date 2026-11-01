@@ -90,18 +90,8 @@ providers {
     
     // Libby/OverDrive - Library access
     libby enabled=true {
-        // Clone code from Libby app (Settings > Copy To Another Device)
-        clone-code env="LIBBY_CLONE_CODE"
-        
-        // Your library cards
-        libraries {
-            card "austin-public-library" {
-                id "apl"
-                website "https://austin.overdrive.com"
-                priority 1  // Check this first
-            }
-        }
-        
+        // Libraries are synced automatically via 'booklife libby-connect'
+
         // Notification preferences
         notifications {
             hold-available true
@@ -782,7 +772,6 @@ require (
 ```bash
 # Required
 HARDCOVER_API_KEY=your_hardcover_token
-LIBBY_CLONE_CODE=12345678
 
 # Optional
 YOUTUBE_API_KEY=your_youtube_key
@@ -807,8 +796,7 @@ Add to `claude_desktop_config.json`:
       "command": "/path/to/booklife-mcp",
       "args": ["--config", "/path/to/booklife.kdl"],
       "env": {
-        "HARDCOVER_API_KEY": "your_key",
-        "LIBBY_CLONE_CODE": "12345678"
+        "HARDCOVER_API_KEY": "your_key"
       }
     }
   }

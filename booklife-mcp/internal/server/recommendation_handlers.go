@@ -67,7 +67,7 @@ func (s *Server) initRecommendationServices() error {
 			// Extract API key and endpoint from config for enricher
 			hcEnricher = enrichment.NewHardcoverEnricherDirect(
 				s.cfg.Providers.Hardcover.Endpoint,
-				s.cfg.Providers.Hardcover.APIKey,
+				string(s.cfg.Providers.Hardcover.APIKey),
 			)
 		}
 

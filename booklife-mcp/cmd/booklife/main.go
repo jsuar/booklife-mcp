@@ -286,7 +286,7 @@ func cmdSync() {
 	// Initialize Hardcover client
 	hcClient, err := hardcover.NewClient(
 		cfg.Providers.Hardcover.Endpoint,
-		cfg.Providers.Hardcover.APIKey,
+		string(cfg.Providers.Hardcover.APIKey),
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create Hardcover client: %v\n", err)

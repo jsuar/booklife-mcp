@@ -43,7 +43,7 @@ export HARDCOVER_API_KEY="your-key-from-hardcover-settings"
 
 ## Configuration
 
-Create a `booklife.kdl` configuration file:
+Create a `booklife.kdl` configuration file from `booklife.kdl.example`:
 
 ```kdl
 server {
