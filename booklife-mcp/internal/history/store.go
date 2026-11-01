@@ -81,16 +81,16 @@ func (s *Store) init() error {
 		title_id TEXT NOT NULL,
 		title TEXT NOT NULL,
 		author TEXT NOT NULL,
-		publisher TEXT,
-		isbn TEXT,
+		publisher TEXT DEFAULT '',
+		isbn TEXT DEFAULT '',
 		timestamp INTEGER NOT NULL,
 		activity TEXT NOT NULL,
-		details TEXT,
+		details TEXT DEFAULT '',
 		library TEXT NOT NULL,
 		library_key TEXT NOT NULL,
 		format TEXT NOT NULL,
-		cover_url TEXT,
-		color TEXT,
+		cover_url TEXT DEFAULT '',
+		color TEXT DEFAULT '',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		UNIQUE(title_id, timestamp, activity)
 	);
@@ -220,7 +220,42 @@ func (s *Store) init() error {
 	CREATE INDEX IF NOT EXISTS idx_profile_computed ON reading_profile(computed_at);
 	`
 
-	_, err := s.db.Exec(query)
+	if _, err := s.db.Exec(query); err != nil {
+		return err
+	}
+
+	// A failed repair only matters if NULLs remain, and that is reported on the
+	// next read, so it shouldn't stop the server from starting.
+	if err := s.repairNulls(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not repair history rows: %v\n", err)
+	}
+	return nil
+}
+
+// repairNulls replaces NULLs left by earlier versions. Rows are scanned into
+// plain strings, so one NULL makes every history read fail. It writes only when
+// there is something to fix, because a write needs the database lock and another
+// BookLife process may be holding it.
+func (s *Store) repairNulls() error {
+	const hasNulls = `publisher IS NULL OR isbn IS NULL OR details IS NULL
+		OR cover_url IS NULL OR color IS NULL`
+
+	var found bool
+	if err := s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM history WHERE ` + hasNulls + `)`).Scan(&found); err != nil {
+		return err
+	}
+	if !found {
+		return nil
+	}
+
+	_, err := s.db.Exec(`
+		UPDATE history SET
+			publisher = COALESCE(publisher, ''),
+			isbn      = COALESCE(isbn, ''),
+			details   = COALESCE(details, ''),
+			cover_url = COALESCE(cover_url, ''),
+			color     = COALESCE(color, '')
+		WHERE ` + hasNulls)
 	return err
 }
 
@@ -289,15 +324,21 @@ func (s *Store) ImportCurrentLoan(loan models.LibbyLoan) error {
 	timestamp := loan.CheckoutDate.UnixMilli()
 
 	query := `
-		INSERT OR REPLACE INTO history
-		(title_id, title, author, timestamp, activity, details, library, library_key, format, cover_url)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO history
+		(title_id, title, author, publisher, isbn, timestamp, activity, details,
+		 library, library_key, format, cover_url, color)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(title_id, timestamp, activity) DO UPDATE SET details = excluded.details
 	`
 
+	// Loans have no publisher, ISBN or color, so write empty strings explicitly.
+	// A repeat sync must not wipe those values from an imported timeline row.
 	_, err := s.db.Exec(query,
 		loan.ID,
 		loan.Title,
 		loan.Author,
+		"",
+		"",
 		timestamp,
 		"Borrowed",
 		fmt.Sprintf("%d days", int(time.Until(loan.DueDate).Hours()/24)),
@@ -305,6 +346,7 @@ func (s *Store) ImportCurrentLoan(loan models.LibbyLoan) error {
 		"",
 		loan.Format,
 		loan.CoverURL,
+		"",
 	)
 
 	return err
