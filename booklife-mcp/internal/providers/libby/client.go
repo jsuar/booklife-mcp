@@ -494,16 +494,111 @@ func (c *Client) CheckAvailability(ctx context.Context, isbn, title, author stri
 		}
 	}
 
-	books, _, err := c.Search(ctx, query, nil, false, 0, 1)
+	// Fetch several results: the top hit is often the audiobook, so a single
+	// result would misreport a title that is also available as an ebook.
+	books, _, err := c.Search(ctx, query, nil, false, 0, availabilitySearchSize)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(books) == 0 {
-		return nil, nil
+	return mergeEditions(books), nil
+}
+
+// availabilitySearchSize is how many search results are checked for editions.
+const availabilitySearchSize = 10
+
+// normalizeTitle reduces a title to the part shared by its editions, so that
+// "Dune: Book One" and "Dune (Unabridged)" compare equal.
+func normalizeTitle(title string) string {
+	if i := strings.IndexAny(title, ":("); i >= 0 {
+		title = title[:i]
+	}
+	return strings.ToLower(strings.TrimSpace(title))
+}
+
+func firstAuthor(book models.Book) string {
+	if len(book.Authors) == 0 {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(book.Authors[0].Name))
+}
+
+// sameWork reports whether two search results are editions of one book. A title
+// search also returns other books, such as sequels, and those must not count.
+func sameWork(a, b models.Book) bool {
+	return normalizeTitle(a.Title) == normalizeTitle(b.Title) && firstAuthor(a) == firstAuthor(b)
+}
+
+// mergeEditions combines the ebook and audiobook editions of the top search
+// result, preferring an available edition of each format. MediaID identifies a
+// single edition, so it always names the one callers should borrow or hold:
+// an available ebook, then an available audiobook, then the top result.
+func mergeEditions(books []models.Book) *models.LibraryAvailability {
+	var top *models.Book
+	for i := range books {
+		if books[i].LibraryAvailability != nil {
+			top = &books[i]
+			break
+		}
+	}
+	if top == nil {
+		return nil
 	}
 
-	return books[0].LibraryAvailability, nil
+	merged := &models.LibraryAvailability{
+		LibraryName:       top.LibraryAvailability.LibraryName,
+		MediaID:           top.LibraryAvailability.MediaID,
+		EstimatedWaitDays: top.LibraryAvailability.EstimatedWaitDays,
+	}
+
+	var sawEbook, sawAudiobook bool
+	var availableEbook, availableAudiobook string
+	for i := range books {
+		avail := books[i].LibraryAvailability
+		if avail == nil || !sameWork(*top, books[i]) {
+			continue
+		}
+		for _, format := range avail.Formats {
+			switch format {
+			case "ebook":
+				if !sawEbook || (avail.EbookAvailable && !merged.EbookAvailable) {
+					merged.EbookAvailable = avail.EbookAvailable
+					merged.EbookCopies = avail.EbookCopies
+					merged.EbookWaitlistSize = avail.EbookWaitlistSize
+					merged.EbookID = avail.EbookID
+				}
+				if avail.EbookAvailable && availableEbook == "" {
+					availableEbook = avail.MediaID
+				}
+				sawEbook = true
+			case "audiobook":
+				if !sawAudiobook || (avail.AudiobookAvailable && !merged.AudiobookAvailable) {
+					merged.AudiobookAvailable = avail.AudiobookAvailable
+					merged.AudiobookCopies = avail.AudiobookCopies
+					merged.AudiobookWaitlistSize = avail.AudiobookWaitlistSize
+					merged.AudiobookID = avail.AudiobookID
+				}
+				if avail.AudiobookAvailable && availableAudiobook == "" {
+					availableAudiobook = avail.MediaID
+				}
+				sawAudiobook = true
+			}
+		}
+	}
+
+	if sawEbook {
+		merged.Formats = append(merged.Formats, "ebook")
+	}
+	if sawAudiobook {
+		merged.Formats = append(merged.Formats, "audiobook")
+	}
+	if availableEbook != "" {
+		merged.MediaID = availableEbook
+	} else if availableAudiobook != "" {
+		merged.MediaID = availableAudiobook
+	}
+
+	return merged
 }
 
 // GetLoans returns current loans
