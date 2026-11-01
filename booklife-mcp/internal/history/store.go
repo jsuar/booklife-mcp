@@ -224,8 +224,30 @@ func (s *Store) init() error {
 		return err
 	}
 
-	// Backfill NULLs from before these columns had defaults. Rows are scanned
-	// into plain strings, so one NULL makes every history read fail.
+	// A failed repair only matters if NULLs remain, and that is reported on the
+	// next read, so it shouldn't stop the server from starting.
+	if err := s.repairNulls(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not repair history rows: %v\n", err)
+	}
+	return nil
+}
+
+// repairNulls replaces NULLs left by earlier versions. Rows are scanned into
+// plain strings, so one NULL makes every history read fail. It writes only when
+// there is something to fix, because a write needs the database lock and another
+// BookLife process may be holding it.
+func (s *Store) repairNulls() error {
+	const hasNulls = `publisher IS NULL OR isbn IS NULL OR details IS NULL
+		OR cover_url IS NULL OR color IS NULL`
+
+	var found bool
+	if err := s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM history WHERE ` + hasNulls + `)`).Scan(&found); err != nil {
+		return err
+	}
+	if !found {
+		return nil
+	}
+
 	_, err := s.db.Exec(`
 		UPDATE history SET
 			publisher = COALESCE(publisher, ''),
@@ -233,9 +255,7 @@ func (s *Store) init() error {
 			details   = COALESCE(details, ''),
 			cover_url = COALESCE(cover_url, ''),
 			color     = COALESCE(color, '')
-		WHERE publisher IS NULL OR isbn IS NULL OR details IS NULL
-		   OR cover_url IS NULL OR color IS NULL
-	`)
+		WHERE ` + hasNulls)
 	return err
 }
 
@@ -304,13 +324,15 @@ func (s *Store) ImportCurrentLoan(loan models.LibbyLoan) error {
 	timestamp := loan.CheckoutDate.UnixMilli()
 
 	query := `
-		INSERT OR REPLACE INTO history
+		INSERT INTO history
 		(title_id, title, author, publisher, isbn, timestamp, activity, details,
 		 library, library_key, format, cover_url, color)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(title_id, timestamp, activity) DO UPDATE SET details = excluded.details
 	`
 
 	// Loans have no publisher, ISBN or color, so write empty strings explicitly.
+	// A repeat sync must not wipe those values from an imported timeline row.
 	_, err := s.db.Exec(query,
 		loan.ID,
 		loan.Title,
