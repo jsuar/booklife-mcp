@@ -10,13 +10,15 @@ Import Libby reading history from a timeline export URL.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `url` | string | Yes | Libby timeline export URL |
+| `url` | string | Yes | Libby timeline export URL. Only `https://share.libbyapp.com/data/...` links are accepted |
 
 ## Examples
 
 ```json
 {"url": "https://share.libbyapp.com/data/{uuid}/libbytimeline-all-loans.json"}
 ```
+
+To import a copy from anywhere else, save it and run `booklife import-timeline <file>`.
 
 ## How to Get the URL
 

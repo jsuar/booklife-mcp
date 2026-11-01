@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"strings"
 	"time"
 
@@ -63,17 +62,8 @@ func (s *Server) handleImportTimeline(ctx context.Context, req *mcp.CallToolRequ
 		return nil, nil, fmt.Errorf("URL too long (max 2048 characters)")
 	}
 
-	// Validate URL scheme
-	parsedURL, err := url.Parse(input.URL)
-	if err != nil {
-		return nil, nil, fmt.Errorf("invalid URL: %w", err)
-	}
-	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return nil, nil, fmt.Errorf("URL must use http or https scheme")
-	}
-
 	importer := history.NewImporter(s.historyStore)
-	count, err := importer.ImportTimeline(input.URL)
+	count, err := importer.ImportTimeline(ctx, input.URL)
 	if err != nil {
 		return nil, nil, fmt.Errorf("importing timeline: %w", err)
 	}
