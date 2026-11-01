@@ -62,7 +62,7 @@ func NewLibbyNotConfiguredError() error {
 			"Enable in booklife.kdl:\n   providers {\n     libby enabled=true\n   }",
 			"Restart the MCP server",
 		},
-		HelpURL: "https://github.com/user/booklife-mcp#libby-setup",
+		HelpURL: "https://github.com/andylbrummer/booklife-mcp#2-connect-libby",
 	}
 }
 

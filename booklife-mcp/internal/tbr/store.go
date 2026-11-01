@@ -10,6 +10,7 @@ import (
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/user/booklife-mcp/internal/dirs"
 )
 
 // Source constants for tracking where TBR entries came from
@@ -28,11 +29,15 @@ type Store struct {
 // NewStore creates or opens a local TBR database
 func NewStore(dataDir string) (*Store, error) {
 	// Ensure data directory exists
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+	if err := os.MkdirAll(dataDir, 0700); err != nil {
 		return nil, fmt.Errorf("creating data directory %s: %w", dataDir, err)
 	}
 
 	dbPath := filepath.Join(dataDir, "tbr.db")
+	if err := dirs.SecureStore(dataDir, dbPath); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not restrict permissions on %s: %v\n", dataDir, err)
+	}
+
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("opening database at %s: %w", dbPath, err)

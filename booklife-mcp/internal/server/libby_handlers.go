@@ -258,7 +258,6 @@ func (s *Server) handlePlaceHold(ctx context.Context, req *mcp.CallToolRequest, 
 	if s.libby == nil {
 		return nil, nil, fmt.Errorf("Libby is not configured")
 	}
-
 	holdID, err := s.libby.PlaceHold(ctx, input.MediaID, input.Format, input.AutoBorrow)
 	if err != nil {
 		return nil, nil, fmt.Errorf("placing hold: %w", err)

@@ -2,6 +2,7 @@
 package dirs
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -155,4 +156,28 @@ func EnsureAll() error {
 		}
 	}
 	return nil
+}
+
+// SecureStore makes a data directory and a SQLite database in it private to the
+// current user, including files left by versions that created them with wider
+// permissions. It is best effort: a file owned by someone else, or a filesystem
+// without Unix modes, shouldn't stop the server, so failures are returned for
+// the caller to report.
+func SecureStore(dataDir, dbPath string) error {
+	var errs []error
+	if err := os.Chmod(dataDir, 0700); err != nil {
+		errs = append(errs, err)
+	}
+	file, err := os.OpenFile(dbPath, os.O_RDWR|os.O_CREATE, 0600)
+	if err != nil {
+		errs = append(errs, err)
+	} else {
+		file.Close()
+	}
+	for _, path := range []string{dbPath, dbPath + "-journal", dbPath + "-wal", dbPath + "-shm"} {
+		if err := os.Chmod(path, 0600); err != nil && !errors.Is(err, os.ErrNotExist) {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }

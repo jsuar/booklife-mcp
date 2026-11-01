@@ -1,6 +1,7 @@
 package libby
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"net/http"
@@ -116,5 +117,41 @@ func TestLiveTLS(t *testing.T) {
 			}
 			resp.Body.Close()
 		})
+	}
+}
+
+func TestReadLimited(t *testing.T) {
+	if data, err := readLimited(strings.NewReader("12345"), 5); err != nil || string(data) != "12345" {
+		t.Fatalf("body at the limit: %q, %v", data, err)
+	}
+	if _, err := readLimited(strings.NewReader("123456"), 5); err == nil {
+		t.Fatal("expected a body over the limit to be rejected")
+	}
+}
+
+func TestCheckID(t *testing.T) {
+	for _, id := range []string{"12345", "media-123", "a_b"} {
+		if err := checkID("media ID", id); err != nil {
+			t.Errorf("%q rejected: %v", id, err)
+		}
+	}
+	for _, id := range []string{"", ".", "..", "../x", "a/b", "a?b", "a%2fb", "a b", "a\nb"} {
+		if err := checkID("media ID", id); err == nil {
+			t.Errorf("expected %q to be rejected", id)
+		}
+	}
+}
+
+func TestDestructiveCallsRejectBadIDsBeforeAnyRequest(t *testing.T) {
+	c := &Client{libraries: []Library{{CardID: "1"}}}
+	ctx := context.Background()
+	if _, err := c.PlaceHold(ctx, "..", "ebook", false); err == nil || !strings.Contains(err.Error(), "invalid") {
+		t.Errorf("PlaceHold: %v", err)
+	}
+	if err := c.CancelHold(ctx, ".."); err == nil || !strings.Contains(err.Error(), "invalid") {
+		t.Errorf("CancelHold: %v", err)
+	}
+	if err := c.ReturnTitle(ctx, ""); err == nil || !strings.Contains(err.Error(), "invalid") {
+		t.Errorf("ReturnTitle: %v", err)
 	}
 }
