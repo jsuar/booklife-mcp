@@ -139,8 +139,8 @@ func (c *Client) SearchBooks(ctx context.Context, query string, offset, limit in
 	var result struct {
 		Data struct {
 			Search struct {
-				IDS     []string        `json:"ids"`
-				Results json.RawMessage `json:"results"`
+				IDS     []json.RawMessage `json:"ids"` // numbers or strings; only counted
+				Results json.RawMessage   `json:"results"`
 			} `json:"search"`
 		} `json:"data"`
 		Errors []struct {
