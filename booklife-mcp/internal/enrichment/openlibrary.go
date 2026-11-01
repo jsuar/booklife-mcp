@@ -63,7 +63,7 @@ func (o *OpenLibraryEnricher) GetByISBN(ctx context.Context, isbn string) (*Open
 	}
 
 	isbn = strings.ReplaceAll(isbn, "-", "")
-	endpoint := fmt.Sprintf("%s/api/books?bibkeys=ISBN:%s&format=json&jscmd=data", o.endpoint, isbn)
+	endpoint := fmt.Sprintf("%s/api/books?bibkeys=ISBN:%s&format=json&jscmd=data", o.endpoint, url.QueryEscape(isbn))
 
 	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {

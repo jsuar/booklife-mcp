@@ -156,3 +156,17 @@ func EnsureAll() error {
 	}
 	return nil
 }
+
+// SecureFile creates path if needed and makes it private to the current user.
+// Existing files are tightened too, and SQLite gives its -wal and -shm files
+// the same mode as the database.
+func SecureFile(path string) error {
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
+	if err != nil {
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0600)
+}

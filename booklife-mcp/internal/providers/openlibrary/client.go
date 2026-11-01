@@ -49,7 +49,7 @@ func (c *Client) GetByISBN(ctx context.Context, isbn string) (*models.Book, erro
 	isbn = strings.ReplaceAll(isbn, "-", "")
 
 	// Use the books API
-	endpoint := fmt.Sprintf("%s/api/books?bibkeys=ISBN:%s&format=json&jscmd=data", c.endpoint, isbn)
+	endpoint := fmt.Sprintf("%s/api/books?bibkeys=ISBN:%s&format=json&jscmd=data", c.endpoint, url.QueryEscape(isbn))
 
 	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
@@ -228,7 +228,7 @@ func (c *Client) GetCoverURL(isbn string, size string) string {
 		size = "L" // Large
 	}
 	isbn = strings.ReplaceAll(isbn, "-", "")
-	return fmt.Sprintf("%s/b/isbn/%s-%s.jpg", c.coversEndpoint, isbn, size)
+	return fmt.Sprintf("%s/b/isbn/%s-%s.jpg", c.coversEndpoint, url.PathEscape(isbn), size)
 }
 
 // GetDescription retrieves description from works API

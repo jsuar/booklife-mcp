@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/user/booklife-mcp/internal/dirs"
 	"github.com/user/booklife-mcp/internal/models"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -23,7 +24,7 @@ type Store struct {
 // NewStore creates or opens a local history database
 func NewStore(dataDir string) (*Store, error) {
 	// Ensure data directory exists
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+	if err := os.MkdirAll(dataDir, 0700); err != nil {
 		return nil, fmt.Errorf("creating data directory %s: %w\n\n"+
 			"This usually means:\n"+
 			"1. Permission denied (check directory permissions)\n"+
@@ -36,6 +37,10 @@ func NewStore(dataDir string) (*Store, error) {
 	}
 
 	dbPath := filepath.Join(dataDir, "history.db")
+	if err := dirs.SecureFile(dbPath); err != nil {
+		return nil, fmt.Errorf("securing database at %s: %w", dbPath, err)
+	}
+
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("opening database at %s: %w\n\n"+

@@ -9,11 +9,15 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hasura/go-graphql-client"
 	"github.com/user/booklife-mcp/internal/debug"
 	"github.com/user/booklife-mcp/internal/models"
 )
+
+// requestTimeout limits a whole Hardcover request, including reading the body.
+const requestTimeout = 30 * time.Second
 
 // Client is the Hardcover GraphQL API client
 type Client struct {
@@ -29,6 +33,7 @@ func NewClient(endpoint, apiKey string) (*Client, error) {
 	}
 
 	httpClient := &http.Client{
+		Timeout: requestTimeout,
 		Transport: &authTransport{
 			apiKey: apiKey,
 			base:   http.DefaultTransport,
@@ -92,7 +97,7 @@ func (c *Client) SearchBooks(ctx context.Context, query string, offset, limit in
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: requestTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("making request: %w", err)
@@ -404,7 +409,7 @@ func (c *Client) UpdateBookStatus(ctx context.Context, userBookID, status string
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := (&http.Client{Timeout: requestTimeout}).Do(req)
 	if err != nil {
 		return fmt.Errorf("executing request: %w", err)
 	}
@@ -686,7 +691,7 @@ func (c *Client) addBookToLibrary(ctx context.Context, bookID string, status str
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: requestTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("making request: %w", err)

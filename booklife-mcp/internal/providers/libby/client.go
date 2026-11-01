@@ -133,6 +133,21 @@ func newHTTPClient(endpoint string, jar http.CookieJar) *http.Client {
 	}
 }
 
+// maxResponseBytes caps a Libby API response read into memory.
+const maxResponseBytes = 32 << 20
+
+// readLimited reads r, failing if it holds more than limit bytes.
+func readLimited(r io.Reader, limit int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("response is larger than %d bytes", limit)
+	}
+	return data, nil
+}
+
 // doRequest centralizes all HTTP requests with proper TLS, headers, and logging
 func (c *Client) doRequest(method, endpoint string, body io.Reader) ([]byte, error) {
 	// Create request
@@ -160,7 +175,7 @@ func (c *Client) doRequest(method, endpoint string, body io.Reader) ([]byte, err
 	defer resp.Body.Close()
 
 	// Read response
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := readLimited(resp.Body, maxResponseBytes)
 	if err != nil {
 		return nil, fmt.Errorf("reading response body: %w", err)
 	}
@@ -598,7 +613,7 @@ func (c *Client) AddTag(ctx context.Context, mediaID, tag string) error {
 	encodedTag := url.PathEscape(tag)
 
 	// POST to /tag/{tag_id}/{encoded_tag_name}/tagging/{title_id}
-	endpoint := fmt.Sprintf("%s/tag/%s/%s/tagging/%s", vandalURL, tagID, encodedTag, mediaID)
+	endpoint := fmt.Sprintf("%s/tag/%s/%s/tagging/%s", vandalURL, tagID, encodedTag, url.PathEscape(mediaID))
 
 	_, err = c.doRequest("POST", endpoint, nil)
 	if err != nil {
@@ -620,7 +635,7 @@ func (c *Client) RemoveTag(ctx context.Context, mediaID, tag string) error {
 	encodedTag := url.PathEscape(tag)
 
 	// DELETE /tag/{tag_id}/{encoded_tag_name}/tagging/{title_id}
-	endpoint := fmt.Sprintf("%s/tag/%s/%s/tagging/%s", vandalURL, tagID, encodedTag, mediaID)
+	endpoint := fmt.Sprintf("%s/tag/%s/%s/tagging/%s", vandalURL, tagID, encodedTag, url.PathEscape(mediaID))
 
 	_, err = c.doRequest("DELETE", endpoint, nil)
 	if err != nil {
@@ -760,7 +775,7 @@ func (c *Client) PlaceHold(ctx context.Context, mediaID, format string, autoBorr
 
 	// Correct endpoint format from libby-calibre-plugin:
 	// POST /card/{card_id}/hold/{title_id}
-	endpoint := fmt.Sprintf("%s/card/%s/hold/%s", sentryReadURL, lib.CardID, mediaID)
+	endpoint := fmt.Sprintf("%s/card/%s/hold/%s", sentryReadURL, lib.CardID, url.PathEscape(mediaID))
 
 	// Payload format from libby-calibre-plugin
 	payload := map[string]interface{}{
@@ -797,7 +812,7 @@ func (c *Client) CancelHold(ctx context.Context, holdID string) error {
 	lib := c.libraries[0]
 
 	// DELETE /card/{card_id}/hold/{hold_id}
-	endpoint := fmt.Sprintf("%s/card/%s/hold/%s", sentryReadURL, lib.CardID, holdID)
+	endpoint := fmt.Sprintf("%s/card/%s/hold/%s", sentryReadURL, lib.CardID, url.PathEscape(holdID))
 
 	_, err := c.doRequest("DELETE", endpoint, nil)
 	if err != nil {
@@ -816,7 +831,7 @@ func (c *Client) BorrowTitle(ctx context.Context, titleID string) (string, error
 	lib := c.libraries[0]
 
 	// POST /card/{card_id}/loan/{title_id}
-	endpoint := fmt.Sprintf("%s/card/%s/loan/%s", sentryReadURL, lib.CardID, titleID)
+	endpoint := fmt.Sprintf("%s/card/%s/loan/%s", sentryReadURL, lib.CardID, url.PathEscape(titleID))
 
 	payload := map[string]interface{}{
 		"days":          21, // Default lending period
@@ -852,7 +867,7 @@ func (c *Client) ReturnTitle(ctx context.Context, loanID string) error {
 	lib := c.libraries[0]
 
 	// DELETE /card/{card_id}/loan/{loan_id}
-	endpoint := fmt.Sprintf("%s/card/%s/loan/%s", sentryReadURL, lib.CardID, loanID)
+	endpoint := fmt.Sprintf("%s/card/%s/loan/%s", sentryReadURL, lib.CardID, url.PathEscape(loanID))
 
 	_, err := c.doRequest("DELETE", endpoint, nil)
 	if err != nil {
@@ -871,7 +886,7 @@ func (c *Client) RenewTitle(ctx context.Context, loanID string) error {
 	lib := c.libraries[0]
 
 	// PUT /card/{card_id}/loan/{loan_id}
-	endpoint := fmt.Sprintf("%s/card/%s/loan/%s", sentryReadURL, lib.CardID, loanID)
+	endpoint := fmt.Sprintf("%s/card/%s/loan/%s", sentryReadURL, lib.CardID, url.PathEscape(loanID))
 
 	_, err := c.doRequest("PUT", endpoint, nil)
 	if err != nil {

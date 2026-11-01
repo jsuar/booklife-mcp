@@ -118,3 +118,12 @@ func TestLiveTLS(t *testing.T) {
 		})
 	}
 }
+
+func TestReadLimited(t *testing.T) {
+	if data, err := readLimited(strings.NewReader("12345"), 5); err != nil || string(data) != "12345" {
+		t.Fatalf("body at the limit: %q, %v", data, err)
+	}
+	if _, err := readLimited(strings.NewReader("123456"), 5); err == nil {
+		t.Fatal("expected a body over the limit to be rejected")
+	}
+}
