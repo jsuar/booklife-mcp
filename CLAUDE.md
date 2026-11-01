@@ -216,32 +216,21 @@ HARDCOVER_API_KEY=your_key go test -v -run TestBookEnrichmentFields ./internal/p
 - `reading_wrap_up` - Period reading summaries
 - `pick_from_tbr` - TBR decision helper
 
-## Libby/OverDrive TLS Certificate Issue
+## Libby/OverDrive TLS Certificates
 
-**CRITICAL**: OverDrive's API uses a certificate that doesn't match the actual hostname (`thunder.odrsre.overdrive.com`), causing TLS verification failures. This is an OverDrive infrastructure issue, not a bug in BookLife.
+Two OverDrive endpoints serve a certificate that does not cover their public hostname, so `tlsServerNames` in `internal/providers/libby/client.go` sets the name to verify instead. `thunder.api.overdrive.com` needs no override.
 
-### Required Configuration
+| Endpoint | Verified as |
+|---|---|
+| `sentry-read.svc.overdrive.com` | `sentry-read.odrsre.overdrive.com` |
+| `vandal.svc.overdrive.com` | `vandal.libbyapp.com` |
+| `thunder.api.overdrive.com` | its own hostname |
 
-All Libby configurations **must** include `skip-tls-verify true`:
+Certificates are always verified. **Never disable verification**: these connections carry the clone code and the Libby session token. If a certificate name changes, update the map. To check the live hosts:
 
-```kdl
-libby enabled=true {
-    skip-tls-verify true
-}
+```bash
+BOOKLIFE_LIVE_TESTS=1 go test -run TestLiveTLS ./internal/providers/libby/
 ```
-
-### Error Symptoms
-
-Without `skip-tls-verify`, Libby API calls fail with:
-```
-Error: searching library: TLS certificate error for https://thunder.api.overdrive.com/...
-x509: certificate is valid for *.api.overdrive.com, *.hq.overdrive.com, *.overdrive.com,
-not thunder.odrsre.overdrive.com
-```
-
-### Security Note
-
-This is **temporary** until OverDrive fixes their certificate configuration. The skip applies only to Libby API calls, not other providers. All data is still encrypted in transit (just without hostname verification).
 
 ## Implementation Status
 

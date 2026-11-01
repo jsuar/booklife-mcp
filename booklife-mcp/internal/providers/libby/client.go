@@ -23,9 +23,8 @@ import (
 // Client is the Libby/OverDrive API client
 // Based on reverse-engineered API from libby-calibre-plugin
 type Client struct {
-	identity      *Identity
-	libraries     []Library
-	skipTLSVerify bool
+	identity  *Identity
+	libraries []Library
 }
 
 // Identity represents the Libby device/user identity
@@ -63,27 +62,40 @@ const (
 	thunderURL    = "https://thunder.api.overdrive.com"
 )
 
-// TLS ServerNames for each endpoint (cert is valid for *.odrsre.overdrive.com)
+// tlsServerNames lists endpoints whose certificate does not cover their public
+// hostname, with the name that certificate is valid for. TLS verification stays
+// on: only the expected name changes. Endpoints not listed verify normally.
 var tlsServerNames = map[string]string{
 	sentryReadURL: "sentry-read.odrsre.overdrive.com",
-	vandalURL:     "vandal.odrsre.overdrive.com",
-	thunderURL:    "thunder.odrsre.overdrive.com",
+	vandalURL:     "vandal.libbyapp.com",
+}
+
+// tlsServerName returns the certificate name to verify for an endpoint URL, or
+// "" to verify against the URL's own hostname.
+func tlsServerName(endpoint string) string {
+	for baseURL, name := range tlsServerNames {
+		if endpoint == baseURL || strings.HasPrefix(endpoint, baseURL+"/") {
+			return name
+		}
+	}
+	return ""
+}
+
+// newHTTPClient returns a client that verifies certificates for endpoint.
+func newHTTPClient(endpoint string, jar http.CookieJar) *http.Client {
+	return &http.Client{
+		Jar: jar,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				ServerName: tlsServerName(endpoint),
+				MinVersion: tls.VersionTLS12,
+			},
+		},
+	}
 }
 
 // doRequest centralizes all HTTP requests with proper TLS, headers, and logging
 func (c *Client) doRequest(method, endpoint string, body io.Reader) ([]byte, error) {
-	// Determine TLS server name from endpoint
-	var serverName string
-	for url, name := range tlsServerNames {
-		if strings.HasPrefix(endpoint, url) {
-			serverName = name
-			break
-		}
-	}
-	if serverName == "" {
-		serverName = "odrsre.overdrive.com" // fallback
-	}
-
 	// Create request
 	req, err := http.NewRequest(method, endpoint, body)
 	if err != nil {
@@ -99,15 +111,7 @@ func (c *Client) doRequest(method, endpoint string, body io.Reader) ([]byte, err
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	// Create HTTP client with proper TLS
-	client := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				ServerName:         serverName,
-				InsecureSkipVerify: c.skipTLSVerify,
-			},
-		},
-	}
+	client := newHTTPClient(endpoint, nil)
 
 	// Execute request
 	resp, err := client.Do(req)
@@ -190,11 +194,12 @@ func enhanceNetworkError(err error, endpoint string) error {
 	// TLS/certificate errors
 	if strings.Contains(urlErr.Error(), "certificate") || strings.Contains(urlErr.Error(), "x509") {
 		return fmt.Errorf("TLS certificate error for %s: %w\n\n"+
-			"OverDrive's certificate may be misconfigured.\n\n"+
+			"The server's certificate could not be verified. OverDrive may have\n"+
+			"changed certificates, or something on your network is intercepting\n"+
+			"the connection.\n\n"+
 			"Fix:\n"+
-			"1. Enable skip-tls-verify in config (insecure, temporary only):\n"+
-			"   libby { skip-tls-verify true }\n"+
-			"2. Or use: booklife libby-connect <code> --skip-tls-verify", endpoint, err)
+			"1. Try a different network\n"+
+			"2. If it persists, check whether tlsServerNames needs updating", endpoint, err)
 	}
 
 	// Connection refused
@@ -853,12 +858,6 @@ func IdentityPath() (string, error) {
 // Connect exchanges a clone code for a Libby identity and returns it along with linked libraries.
 // This is the fast path for the CLI - it does the minimum work needed to authenticate.
 func Connect(code string) (*Identity, []Library, error) {
-	return ConnectWithOptions(code, false)
-}
-
-// ConnectWithOptions exchanges a clone code with optional TLS verification skip.
-// Use skipTLSVerify=true if OverDrive's certificate is misconfigured (temporary workaround).
-func ConnectWithOptions(code string, skipTLSVerify bool) (*Identity, []Library, error) {
 	if len(code) != 8 {
 		return nil, nil, fmt.Errorf("clone code must be 8 digits")
 	}
@@ -869,12 +868,7 @@ func ConnectWithOptions(code string, skipTLSVerify bool) (*Identity, []Library, 
 		return nil, nil, fmt.Errorf("creating cookie jar: %w", err)
 	}
 
-	httpClient := &http.Client{Jar: jar}
-	if skipTLSVerify {
-		httpClient.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		}
-	}
+	httpClient := newHTTPClient(sentryReadURL, jar)
 
 	// Step 1: Get initial chip identity token
 	chipEndpoint := fmt.Sprintf("%s/chip?client=dewey", sentryReadURL)
@@ -1047,20 +1041,12 @@ func LoadIdentity() (*Identity, error) {
 
 // NewClientFromSavedIdentity creates a new Libby client using a previously saved identity
 func NewClientFromSavedIdentity() (*Client, error) {
-	return NewClientFromSavedIdentityWithOptions(false)
-}
-
-// NewClientFromSavedIdentityWithOptions creates a new Libby client with TLS options
-func NewClientFromSavedIdentityWithOptions(skipTLSVerify bool) (*Client, error) {
 	identity, err := LoadIdentity()
 	if err != nil {
 		return nil, err
 	}
 
-	c := &Client{
-		identity:      identity,
-		skipTLSVerify: skipTLSVerify,
-	}
+	c := &Client{identity: identity}
 
 	// Sync library cards
 	if err := c.syncLibraries(); err != nil {

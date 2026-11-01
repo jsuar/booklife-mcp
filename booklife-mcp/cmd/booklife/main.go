@@ -88,17 +88,14 @@ Config directories:
   Windows:         %APPDATA%\BookLife
 
 Libby Connect:
-  booklife libby-connect <8-digit-code> [--skip-tls-verify]
+  booklife libby-connect <8-digit-code>
 
   To get a clone code:
     1. Open Libby app on your phone
     2. Go to Settings > Copy To Another Device
     3. Tap "Sonos Speakers" or "Android Automotive"
     4. Run this command immediately with the displayed code
-    5. You have ~40 seconds before the code expires!
-
-Options:
-  --skip-tls-verify  Skip TLS certificate verification (insecure)`)
+    5. You have ~40 seconds before the code expires!`)
 }
 
 func cmdServe() {
@@ -154,10 +151,7 @@ func cmdLibbyConnect() {
 	if len(os.Args) < 3 {
 		fmt.Fprintln(os.Stderr, "Error: clone code required")
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Usage: booklife libby-connect <8-digit-code> [--skip-tls-verify]")
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Options:")
-		fmt.Fprintln(os.Stderr, "  --skip-tls-verify  Skip TLS certificate verification (use if OverDrive cert is broken)")
+		fmt.Fprintln(os.Stderr, "Usage: booklife libby-connect <8-digit-code>")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "To get a clone code:")
 		fmt.Fprintln(os.Stderr, "  1. Open Libby app on your phone")
@@ -168,10 +162,9 @@ func cmdLibbyConnect() {
 	}
 
 	code := os.Args[2]
-	skipTLSVerify := false
 	for _, arg := range os.Args[3:] {
 		if arg == "--skip-tls-verify" {
-			skipTLSVerify = true
+			fmt.Fprintln(os.Stderr, "Warning: --skip-tls-verify is no longer supported and is ignored; certificates are always verified")
 		}
 	}
 
@@ -190,12 +183,9 @@ func cmdLibbyConnect() {
 
 	fmt.Println("⏱️  Connecting to Libby...")
 	fmt.Printf("   Code: %s\n", code)
-	if skipTLSVerify {
-		fmt.Println("   ⚠️  TLS verification disabled (insecure)")
-	}
 
 	// Connect and save identity
-	identity, libraries, err := libby.ConnectWithOptions(code, skipTLSVerify)
+	identity, libraries, err := libby.Connect(code)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "\n❌ Failed to connect: %v\n", err)
 		fmt.Fprintln(os.Stderr, "")

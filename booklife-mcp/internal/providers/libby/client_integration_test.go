@@ -23,7 +23,7 @@ func skipIfNoCredentials(t *testing.T) *Client {
 		t.Skip("Skipping integration test: no saved Libby identity found")
 	}
 
-	client, err := NewClientFromSavedIdentityWithOptions(true) // skip TLS verify for testing
+	client, err := NewClientFromSavedIdentity() // skip TLS verify for testing
 	if err != nil {
 		t.Fatalf("Failed to create Libby client: %v", err)
 	}

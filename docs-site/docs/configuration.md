@@ -113,7 +113,7 @@ Override with `BOOKLIFE_DATA_DIR` environment variable.
 
 ## Libby TLS Note
 
-OverDrive's API has a certificate hostname mismatch. If you encounter TLS errors, the Libby connection already handles this internally. No configuration needed beyond `libby enabled=true`.
+Two OverDrive endpoints serve certificates issued for a different hostname. BookLife verifies them against the correct name, so no configuration is needed. The old `skip-tls-verify` option is ignored, and certificates are always verified.
 
 ## Provider Initialization
 

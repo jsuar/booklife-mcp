@@ -26,17 +26,13 @@ booklife --config booklife.kdl  # same thing
 Connect a Libby/OverDrive account using a clone code.
 
 ```bash
-booklife libby-connect <8-digit-code> [--skip-tls-verify]
+booklife libby-connect <8-digit-code>
 ```
 
 **Steps:**
 1. Open Libby app → Settings → Copy To Another Device → Sonos Speakers
 2. Note the 8-digit code displayed
 3. Run the command within ~40 seconds
-
-| Flag | Description |
-|------|-------------|
-| `--skip-tls-verify` | Skip TLS certificate verification (for OverDrive cert issues) |
 
 Identity is saved to:
 - Linux: `~/.config/booklife/libby-identity.json`
