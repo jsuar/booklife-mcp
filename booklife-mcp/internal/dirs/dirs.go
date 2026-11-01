@@ -2,6 +2,7 @@
 package dirs
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -157,16 +158,26 @@ func EnsureAll() error {
 	return nil
 }
 
-// SecureFile creates path if needed and makes it private to the current user.
-// Existing files are tightened too, and SQLite gives its -wal and -shm files
-// the same mode as the database.
-func SecureFile(path string) error {
-	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
+// SecureStore makes a data directory and a SQLite database in it private to the
+// current user, including files left by versions that created them with wider
+// permissions. It is best effort: a file owned by someone else, or a filesystem
+// without Unix modes, shouldn't stop the server, so failures are returned for
+// the caller to report.
+func SecureStore(dataDir, dbPath string) error {
+	var errs []error
+	if err := os.Chmod(dataDir, 0700); err != nil {
+		errs = append(errs, err)
+	}
+	file, err := os.OpenFile(dbPath, os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
-		return err
+		errs = append(errs, err)
+	} else {
+		file.Close()
 	}
-	if err := file.Close(); err != nil {
-		return err
+	for _, path := range []string{dbPath, dbPath + "-journal", dbPath + "-wal", dbPath + "-shm"} {
+		if err := os.Chmod(path, 0600); err != nil && !errors.Is(err, os.ErrNotExist) {
+			errs = append(errs, err)
+		}
 	}
-	return os.Chmod(path, 0600)
+	return errors.Join(errs...)
 }

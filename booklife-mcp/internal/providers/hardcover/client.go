@@ -64,7 +64,10 @@ func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		// Only capture response body for debugging if content length is known and reasonable
 		body, readErr := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		if readErr == nil && len(body) > 0 {
+		if readErr != nil {
+			return nil, readErr
+		}
+		if len(body) > 0 {
 			// Debug logging only if BOOKLIFE_DEBUG=true
 			debug.Log("hardcover", body)
 		}

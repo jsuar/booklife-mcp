@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -131,6 +132,18 @@ func newHTTPClient(endpoint string, jar http.CookieJar) *http.Client {
 		Transport:     transportFor(endpoint),
 		CheckRedirect: sameHostRedirect,
 	}
+}
+
+// validID matches the IDs Libby uses in URL paths. Escaping is not enough for
+// these, because "." and ".." pass through url.PathEscape unchanged.
+var validID = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
+// checkID rejects an empty or malformed ID before it reaches a request path.
+func checkID(kind, id string) error {
+	if !validID.MatchString(id) {
+		return fmt.Errorf("invalid %s", kind)
+	}
+	return nil
 }
 
 // maxResponseBytes caps a Libby API response read into memory.
@@ -376,7 +389,7 @@ func (c *Client) Search(ctx context.Context, query string, formats []string, ava
 		libraryKey = lib.ID // Fall back to websiteId if no advantageKey
 	}
 
-	endpoint := fmt.Sprintf("%s/v2/libraries/%s/media", thunderURL, libraryKey)
+	endpoint := fmt.Sprintf("%s/v2/libraries/%s/media", thunderURL, url.PathEscape(libraryKey))
 
 	params := url.Values{}
 	params.Set("query", query)
@@ -603,6 +616,10 @@ func (c *Client) GetTags(ctx context.Context) (map[string][]string, error) {
 
 // AddTag adds a tag to a media item
 func (c *Client) AddTag(ctx context.Context, mediaID, tag string) error {
+	if err := checkID("media ID", mediaID); err != nil {
+		return err
+	}
+
 	// First, get or create the tag to find its ID
 	tagID, err := c.getOrCreateTag(ctx, tag)
 	if err != nil {
@@ -613,7 +630,7 @@ func (c *Client) AddTag(ctx context.Context, mediaID, tag string) error {
 	encodedTag := url.PathEscape(tag)
 
 	// POST to /tag/{tag_id}/{encoded_tag_name}/tagging/{title_id}
-	endpoint := fmt.Sprintf("%s/tag/%s/%s/tagging/%s", vandalURL, tagID, encodedTag, url.PathEscape(mediaID))
+	endpoint := fmt.Sprintf("%s/tag/%s/%s/tagging/%s", vandalURL, url.PathEscape(tagID), encodedTag, url.PathEscape(mediaID))
 
 	_, err = c.doRequest("POST", endpoint, nil)
 	if err != nil {
@@ -625,6 +642,10 @@ func (c *Client) AddTag(ctx context.Context, mediaID, tag string) error {
 
 // RemoveTag removes a tag from a media item
 func (c *Client) RemoveTag(ctx context.Context, mediaID, tag string) error {
+	if err := checkID("media ID", mediaID); err != nil {
+		return err
+	}
+
 	// First, get the tag ID
 	tagID, err := c.getTagID(ctx, tag)
 	if err != nil {
@@ -635,7 +656,7 @@ func (c *Client) RemoveTag(ctx context.Context, mediaID, tag string) error {
 	encodedTag := url.PathEscape(tag)
 
 	// DELETE /tag/{tag_id}/{encoded_tag_name}/tagging/{title_id}
-	endpoint := fmt.Sprintf("%s/tag/%s/%s/tagging/%s", vandalURL, tagID, encodedTag, url.PathEscape(mediaID))
+	endpoint := fmt.Sprintf("%s/tag/%s/%s/tagging/%s", vandalURL, url.PathEscape(tagID), encodedTag, url.PathEscape(mediaID))
 
 	_, err = c.doRequest("DELETE", endpoint, nil)
 	if err != nil {
@@ -767,6 +788,10 @@ func (c *Client) GetHolds(ctx context.Context) ([]models.LibbyHold, error) {
 
 // PlaceHold places a hold on a media item
 func (c *Client) PlaceHold(ctx context.Context, mediaID, format string, autoBorrow bool) (string, error) {
+	if err := checkID("media ID", mediaID); err != nil {
+		return "", err
+	}
+
 	if len(c.libraries) == 0 {
 		return "", fmt.Errorf("no libraries linked")
 	}
@@ -805,6 +830,10 @@ func (c *Client) PlaceHold(ctx context.Context, mediaID, format string, autoBorr
 
 // CancelHold cancels a hold on a media item
 func (c *Client) CancelHold(ctx context.Context, holdID string) error {
+	if err := checkID("hold ID", holdID); err != nil {
+		return err
+	}
+
 	if len(c.libraries) == 0 {
 		return fmt.Errorf("no libraries linked")
 	}
@@ -824,6 +853,10 @@ func (c *Client) CancelHold(ctx context.Context, holdID string) error {
 
 // BorrowTitle borrows an available title
 func (c *Client) BorrowTitle(ctx context.Context, titleID string) (string, error) {
+	if err := checkID("title ID", titleID); err != nil {
+		return "", err
+	}
+
 	if len(c.libraries) == 0 {
 		return "", fmt.Errorf("no libraries linked")
 	}
@@ -860,6 +893,10 @@ func (c *Client) BorrowTitle(ctx context.Context, titleID string) (string, error
 
 // ReturnTitle returns a borrowed title early
 func (c *Client) ReturnTitle(ctx context.Context, loanID string) error {
+	if err := checkID("loan ID", loanID); err != nil {
+		return err
+	}
+
 	if len(c.libraries) == 0 {
 		return fmt.Errorf("no libraries linked")
 	}
@@ -879,6 +916,10 @@ func (c *Client) ReturnTitle(ctx context.Context, loanID string) error {
 
 // RenewTitle renews a borrowed title
 func (c *Client) RenewTitle(ctx context.Context, loanID string) error {
+	if err := checkID("loan ID", loanID); err != nil {
+		return err
+	}
+
 	if len(c.libraries) == 0 {
 		return fmt.Errorf("no libraries linked")
 	}
@@ -974,7 +1015,7 @@ func Connect(code string) (*Identity, []Library, error) {
 	defer resp.Body.Close()
 
 	// Read full response - we need it for both cloneResult and cloneChip parsing
-	cloneBody, err := io.ReadAll(resp.Body)
+	cloneBody, err := readLimited(resp.Body, maxResponseBytes)
 	if err != nil {
 		return nil, nil, fmt.Errorf("reading clone response: %w", err)
 	}

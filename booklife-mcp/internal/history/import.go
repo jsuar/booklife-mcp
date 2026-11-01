@@ -234,16 +234,16 @@ func (im *Importer) ExportForImport(entries []models.TimelineEntry, activity str
 	}
 
 	booksDir := filepath.Join(homeDir, "books")
-	if err := os.MkdirAll(booksDir, 0755); err != nil {
+	if err := os.MkdirAll(booksDir, 0700); err != nil {
 		return "", 0, fmt.Errorf("creating books directory: %w", err)
 	}
 
 	timestamp := time.Now().Format("20060102-150405")
-	filename := fmt.Sprintf("libby_export_%s_%s.csv", activity, timestamp)
+	filename := fmt.Sprintf("libby_export_%s_%s.csv", filepath.Base(activity), timestamp)
 	filePath := filepath.Join(booksDir, filename)
 
 	// Create CSV file
-	file, err := os.Create(filePath)
+	file, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return "", 0, fmt.Errorf("creating CSV file: %w", err)
 	}

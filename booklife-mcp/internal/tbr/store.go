@@ -10,9 +10,8 @@ import (
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
-
-
-	"github.com/user/booklife-mcp/internal/dirs")
+	"github.com/user/booklife-mcp/internal/dirs"
+)
 
 // Source constants for tracking where TBR entries came from
 const (
@@ -35,8 +34,8 @@ func NewStore(dataDir string) (*Store, error) {
 	}
 
 	dbPath := filepath.Join(dataDir, "tbr.db")
-	if err := dirs.SecureFile(dbPath); err != nil {
-		return nil, fmt.Errorf("securing database at %s: %w", dbPath, err)
+	if err := dirs.SecureStore(dataDir, dbPath); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not restrict permissions on %s: %v\n", dataDir, err)
 	}
 
 	db, err := sql.Open("sqlite3", dbPath)

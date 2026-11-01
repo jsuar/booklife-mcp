@@ -37,8 +37,8 @@ func NewStore(dataDir string) (*Store, error) {
 	}
 
 	dbPath := filepath.Join(dataDir, "history.db")
-	if err := dirs.SecureFile(dbPath); err != nil {
-		return nil, fmt.Errorf("securing database at %s: %w", dbPath, err)
+	if err := dirs.SecureStore(dataDir, dbPath); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not restrict permissions on %s: %v\n", dataDir, err)
 	}
 
 	db, err := sql.Open("sqlite3", dbPath)
